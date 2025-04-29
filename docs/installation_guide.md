@@ -174,4 +174,135 @@ deactivate
 tail -f bot.log
 ```
 
+## Автоматический деплой
+
+Для автоматического обновления бота при каждом коммите, мы настроим GitHub Actions и деплой на сервер.
+
+### 1. Настройка SSH-ключей
+
+На вашем локальном компьютере:
+```bash
+# Генерируем SSH-ключ для деплоя
+ssh-keygen -t ed25519 -C "deploy-key" -f ~/.ssh/deploy_key
+```
+
+На удалённом сервере:
+```bash
+# Добавьте публичный ключ в authorized_keys
+echo "содержимое_deploy_key.pub" >> ~/.ssh/authorized_keys
+```
+
+### 2. Настройка GitHub Secrets
+
+1. Перейдите в настройки вашего репозитория на GitHub
+2. Выберите "Settings" -> "Secrets and variables" -> "Actions"
+3. Добавьте следующие секреты:
+   - `SSH_PRIVATE_KEY`: содержимое файла `~/.ssh/deploy_key`
+   - `SERVER_HOST`: IP-адрес вашего сервера
+   - `SERVER_USERNAME`: имя пользователя на сервере
+   - `BOT_TOKEN`: токен вашего Telegram бота
+   - `DEEPSEEK_API_KEY`: ваш ключ API DeepSeek
+
+### 3. Создание GitHub Actions workflow
+
+Создайте файл `.github/workflows/deploy.yml` в вашем репозитории:
+
+```yaml
+name: Deploy Bot
+
+on:
+  push:
+    branches:
+      - main  # или master, в зависимости от вашей основной ветки
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+
+      - name: Deploy to server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
+        run: |
+          # Копируем файлы на сервер
+          rsync -avz -e "ssh -i ~/.ssh/deploy_key" \
+            --exclude '.git*' \
+            --exclude 'venv' \
+            --exclude '__pycache__' \
+            ./ ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/home/${{ secrets.SERVER_USERNAME }}/projects/simplebot/
+
+      - name: Update environment and restart bot
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} '
+            cd ~/projects/simplebot
+            echo "TELEGRAM_BOT_TOKEN=${{ secrets.BOT_TOKEN }}" > .env
+            echo "DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}" >> .env
+            source venv/bin/activate
+            pip install -r requirements.txt
+            sudo systemctl restart telegrambot
+          '
+```
+
+### 4. Настройка прав на сервере
+
+На удалённом сервере добавьте право на перезапуск сервиса без пароля:
+```bash
+# Откройте sudoers файл
+sudo visudo
+
+# Добавьте строку (замените username на вашего пользователя):
+username ALL=(ALL) NOPASSWD: /bin/systemctl restart telegrambot
+```
+
+### 5. Проверка деплоя
+
+1. Закоммитьте и запушьте изменения в репозиторий:
+```bash
+git add .
+git commit -m "Update bot code"
+git push origin main
+```
+
+2. Проверьте статус деплоя:
+   - Откройте GitHub -> Actions
+   - Посмотрите статус последнего workflow
+   - Проверьте статус бота на сервере:
+     ```bash
+     sudo systemctl status telegrambot
+     ```
+
+### Решение проблем при деплое
+
+1. Проверьте права доступа:
+```bash
+# На сервере
+ls -la ~/projects/simplebot
+sudo systemctl status telegrambot
+journalctl -u telegrambot -f
+```
+
+2. Проверьте логи GitHub Actions:
+   - Откройте GitHub -> Actions -> Последний workflow
+   - Изучите логи каждого шага
+
+3. Проверьте SSH подключение:
+```bash
+# Локально
+ssh -i ~/.ssh/deploy_key username@server_host
+```
+
 (｡♥‿♥｡) Удачной работы с ботом! При возникновении вопросов обращайтесь к разработчикам! 
