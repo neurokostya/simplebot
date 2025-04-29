@@ -6,16 +6,33 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from poems_storage import PoemsStorage
 
-# Загружаем переменные окружения
-load_dotenv()
-
 # Настраиваем логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+logger = logging.getLogger(__name__)
 
+# Загружаем переменные окружения
+load_dotenv()
+
+logger.info("Starting bot initialization...")
+
+# Получаем и проверяем переменные окружения
+BOT_TOKEN = os.getenv('BOT_TOKEN')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
+
+logger.info("Checking environment variables...")
+if not BOT_TOKEN:
+    logger.error("BOT_TOKEN not found in environment variables!")
+    raise ValueError("BOT_TOKEN is required")
+
+if not DEEPSEEK_API_KEY:
+    logger.error("DEEPSEEK_API_KEY not found in environment variables!")
+    raise ValueError("DEEPSEEK_API_KEY is required")
+
+logger.info("Environment variables loaded successfully")
+
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 # Инициализируем хранилище стихов
@@ -214,30 +231,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 def main():
-    # Получаем токен бота из переменных окружения
-    token = os.getenv('BOT_TOKEN')
-    
-    if not DEEPSEEK_API_KEY:
-        print("Ошибка: Не найден DEEPSEEK_API_KEY в файле .env")
-        return
-    
-    # Создаём приложение
-    app = Application.builder().token(token).build()
-    
-    # Добавляем обработчики команд
-    app.add_handler(CommandHandler('start', start_command))
-    app.add_handler(CommandHandler('help', help_command))
-    app.add_handler(CommandHandler('style', style_command))
-    
-    # Добавляем обработчик callback'ов
-    app.add_handler(CallbackQueryHandler(handle_callback_query))
-    
-    # Добавляем обработчик текстовых сообщений
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    # Запускаем бота
-    print('Бот-поэт запущен! (◕‿◕✿)')
-    app.run_polling(poll_interval=1)
+    try:
+        logger.info("Initializing bot application...")
+        app = Application.builder().token(BOT_TOKEN).build()
+        
+        logger.info("Adding command handlers...")
+        # Добавляем обработчики команд
+        app.add_handler(CommandHandler('start', start_command))
+        app.add_handler(CommandHandler('help', help_command))
+        app.add_handler(CommandHandler('style', style_command))
+        
+        # Добавляем обработчик callback'ов
+        app.add_handler(CallbackQueryHandler(handle_callback_query))
+        
+        # Добавляем обработчик текстовых сообщений
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        
+        logger.info('Бот-поэт запущен! (◕‿◕✿)')
+        app.run_polling(poll_interval=1)
+    except Exception as e:
+        logger.error(f"Critical error during bot startup: {str(e)}")
+        raise
 
 if __name__ == '__main__':
     main() 
