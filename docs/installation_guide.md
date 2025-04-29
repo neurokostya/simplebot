@@ -174,6 +174,31 @@ deactivate
 tail -f bot.log
 ```
 
+## Управление переменными окружения
+
+1. Создайте файл `.env.example` в корне проекта:
+```bash
+# Пример файла .env.example
+TELEGRAM_BOT_TOKEN=your_token_here
+DEEPSEEK_API_KEY=your_api_key_here
+```
+
+2. Добавьте `.env` в `.gitignore`:
+```bash
+echo ".env" >> .gitignore
+echo "venv/" >> .gitignore
+```
+
+3. На сервере создайте файл `.env` с реальными значениями:
+```bash
+# Создайте и отредактируйте файл .env
+nano .env
+
+# Добавьте реальные значения
+TELEGRAM_BOT_TOKEN=ваш_реальный_токен
+DEEPSEEK_API_KEY=ваш_реальный_ключ
+```
+
 ## Автоматический деплой
 
 Для автоматического обновления бота при каждом коммите, мы настроим GitHub Actions и деплой на сервер.
@@ -233,57 +258,48 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
         run: |
-          # Копируем файлы на сервер
+          # Копируем файлы на сервер (исключая .env и venv)
           rsync -avz -e "ssh -i ~/.ssh/deploy_key" \
             --exclude '.git*' \
             --exclude 'venv' \
             --exclude '__pycache__' \
+            --exclude '.env' \
+            --exclude '.env.*' \
             ./ ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/home/${{ secrets.SERVER_USERNAME }}/projects/simplebot/
 
-      - name: Update environment and restart bot
+      - name: Update dependencies and restart bot
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           ssh -i ~/.ssh/deploy_key ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} '
             cd ~/projects/simplebot
-            echo "TELEGRAM_BOT_TOKEN=${{ secrets.BOT_TOKEN }}" > .env
-            echo "DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}" >> .env
+            # НЕ перезаписываем .env файл, используем существующий на сервере
             source venv/bin/activate
             pip install -r requirements.txt
             sudo systemctl restart telegrambot
           '
 ```
 
-### 4. Настройка прав на сервере
+### 4. Первоначальная настройка на сервере
 
-На удалённом сервере добавьте право на перезапуск сервиса без пароля:
+Перед первым деплоем выполните на сервере:
+
 ```bash
-# Откройте sudoers файл
-sudo visudo
+# Создайте директорию для проекта
+mkdir -p ~/projects/simplebot
 
-# Добавьте строку (замените username на вашего пользователя):
-username ALL=(ALL) NOPASSWD: /bin/systemctl restart telegrambot
+# Создайте виртуальное окружение
+cd ~/projects/simplebot
+python3 -m venv venv
+
+# Создайте файл .env с реальными значениями
+nano .env
+# Добавьте ваши переменные окружения
+
+# Настройте права
+chmod 600 .env
 ```
-
-### 5. Проверка деплоя
-
-1. Закоммитьте и запушьте изменения в репозиторий:
-```bash
-git add .
-git commit -m "Update bot code"
-git push origin main
-```
-
-2. Проверьте статус деплоя:
-   - Откройте GitHub -> Actions
-   - Посмотрите статус последнего workflow
-   - Проверьте статус бота на сервере:
-     ```bash
-     sudo systemctl status telegrambot
-     ```
 
 ### Решение проблем при деплое
 
