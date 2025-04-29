@@ -7,4 +7,16 @@ services:
     restart: always
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY} 
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+    extra_hosts:
+      - "api.telegram.org:149.154.167.220"
+      - "api.deepseek.com:34.120.208.123"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    networks:
+      - bot_net
+
+networks:
+  bot_net:
+    driver: bridge 
